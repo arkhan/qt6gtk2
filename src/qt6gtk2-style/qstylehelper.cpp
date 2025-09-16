@@ -195,9 +195,7 @@ QPolygonF calcLines(const QStyleOptionSlider *dial)
     return poly;
 }
 
-// This will draw a nice and shiny QDial for us. We don't want
-// all the shinyness in QWindowsStyle, hence we place it here
-
+// Updated drawDial without BEGIN/END_STYLE_PIXMAPCACHE
 void drawDial(const QStyleOptionSlider *option, QPainter *painter)
 {
     QPalette pal = option->palette;
@@ -219,67 +217,76 @@ void drawDial(const QStyleOptionSlider *option, QPainter *painter)
     }
 
     // Cache dial background
-    BEGIN_STYLE_PIXMAPCACHE(QString::fromLatin1("qdial"));
-    p->setRenderHint(QPainter::Antialiasing);
+    QString cacheKey = QStringLiteral("qdial_%1x%2").arg(width).arg(height);
+    QPixmap cached;
+    if (!QPixmapCache::find(cacheKey, &cached)) {
+        cached = QPixmap(width, height);
+        cached.fill(Qt::transparent);
 
-    const qreal d_ = r / 6;
-    const qreal dx = option->rect.x() + d_ + (width - 2 * r) / 2 + 1;
-    const qreal dy = option->rect.y() + d_ + (height - 2 * r) / 2 + 1;
+        QPainter p(&cached);
+        p.setRenderHint(QPainter::Antialiasing);
 
-    QRectF br = QRectF(dx + 0.5, dy + 0.5,
-                       int(r * 2 - 2 * d_ - 2),
-                       int(r * 2 - 2 * d_ - 2));
-    buttonColor.setHsv(buttonColor .hue(),
-                       qMin(140, buttonColor .saturation()),
-                       qMax(180, buttonColor.value()));
+        const qreal d_ = r / 6;
+        const qreal dx = option->rect.x() + d_ + (width - 2 * r) / 2 + 1;
+        const qreal dy = option->rect.y() + d_ + (height - 2 * r) / 2 + 1;
 
-    if (enabled) {
-        // Drop shadow
-        qreal shadowSize = qMax(1.0, penSize/2.0);
-        QRectF shadowRect= br.adjusted(-2*shadowSize, -2*shadowSize,
-                                       2*shadowSize, 2*shadowSize);
-        QRadialGradient shadowGradient(shadowRect.center().x(),
-                                       shadowRect.center().y(), shadowRect.width()/2.0,
-                                       shadowRect.center().x(), shadowRect.center().y());
-        shadowGradient.setColorAt(qreal(0.91), QColor(0, 0, 0, 40));
-        shadowGradient.setColorAt(qreal(1.0), Qt::transparent);
-        p->setBrush(shadowGradient);
-        p->setPen(Qt::NoPen);
-        p->translate(shadowSize, shadowSize);
-        p->drawEllipse(shadowRect);
-        p->translate(-shadowSize, -shadowSize);
+        QRectF br = QRectF(dx + 0.5, dy + 0.5,
+                           int(r * 2 - 2 * d_ - 2),
+                           int(r * 2 - 2 * d_ - 2));
+        buttonColor.setHsv(buttonColor .hue(),
+                           qMin(140, buttonColor .saturation()),
+                           qMax(180, buttonColor.value()));
 
-        // Main gradient
-        QRadialGradient gradient(br.center().x() - br.width()/3, dy,
-                                 br.width()*1.3, br.center().x(),
-                                 br.center().y() - br.height()/2);
-        gradient.setColorAt(0, buttonColor.lighter(110));
-        gradient.setColorAt(qreal(0.5), buttonColor);
-        gradient.setColorAt(qreal(0.501), buttonColor.darker(102));
-        gradient.setColorAt(1, buttonColor.darker(115));
-        p->setBrush(gradient);
-    } else {
-        p->setBrush(Qt::NoBrush);
+        if (enabled) {
+            // Drop shadow
+            qreal shadowSize = qMax(1.0, penSize/2.0);
+            QRectF shadowRect= br.adjusted(-2*shadowSize, -2*shadowSize,
+                                           2*shadowSize, 2*shadowSize);
+            QRadialGradient shadowGradient(shadowRect.center().x(),
+                                           shadowRect.center().y(), shadowRect.width()/2.0,
+                                           shadowRect.center().x(), shadowRect.center().y());
+            shadowGradient.setColorAt(qreal(0.91), QColor(0, 0, 0, 40));
+            shadowGradient.setColorAt(qreal(1.0), Qt::transparent);
+            p.setBrush(shadowGradient);
+            p.setPen(Qt::NoPen);
+            p.translate(shadowSize, shadowSize);
+            p.drawEllipse(shadowRect);
+            p.translate(-shadowSize, -shadowSize);
+
+            // Main gradient
+            QRadialGradient gradient(br.center().x() - br.width()/3, dy,
+                                     br.width()*1.3, br.center().x(),
+                                     br.center().y() - br.height()/2);
+            gradient.setColorAt(0, buttonColor.lighter(110));
+            gradient.setColorAt(qreal(0.5), buttonColor);
+            gradient.setColorAt(qreal(0.501), buttonColor.darker(102));
+            gradient.setColorAt(1, buttonColor.darker(115));
+            p.setBrush(gradient);
+        } else {
+            p.setBrush(Qt::NoBrush);
+        }
+
+        p.setPen(QPen(buttonColor.darker(280)));
+        p.drawEllipse(br);
+        p.setBrush(Qt::NoBrush);
+        p.setPen(buttonColor.lighter(110));
+        p.drawEllipse(br.adjusted(1, 1, -1, -1));
+
+        if (option->state & QStyle::State_HasFocus) {
+            QColor highlight = pal.highlight().color();
+            highlight.setHsv(highlight.hue(),
+                             qMin(160, highlight.saturation()),
+                             qMax(230, highlight.value()));
+            highlight.setAlpha(127);
+            p.setPen(QPen(highlight, 2.0));
+            p.setBrush(Qt::NoBrush);
+            p.drawEllipse(br.adjusted(-1, -1, 1, 1));
+        }
+
+        QPixmapCache::insert(cacheKey, cached);
     }
 
-    p->setPen(QPen(buttonColor.darker(280)));
-    p->drawEllipse(br);
-    p->setBrush(Qt::NoBrush);
-    p->setPen(buttonColor.lighter(110));
-    p->drawEllipse(br.adjusted(1, 1, -1, -1));
-
-    if (option->state & QStyle::State_HasFocus) {
-        QColor highlight = pal.highlight().color();
-        highlight.setHsv(highlight.hue(),
-                         qMin(160, highlight.saturation()),
-                         qMax(230, highlight.value()));
-        highlight.setAlpha(127);
-        p->setPen(QPen(highlight, 2.0));
-        p->setBrush(Qt::NoBrush);
-        p->drawEllipse(br.adjusted(-1, -1, 1, 1));
-    }
-
-    END_STYLE_PIXMAPCACHE
+    painter->drawPixmap(option->rect.topLeft(), cached);
 
     QPointF dp = calcRadialPos(option, qreal(0.70));
     buttonColor = buttonColor.lighter(104);
